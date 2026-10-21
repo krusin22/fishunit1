@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Fishing Lengths - มหาสมุทรหน่วยความยาว</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Mali', cursive; 
+            background-color: #0f172a; 
+            margin: 0; display: flex; justify-content: center; align-items: center; 
+            min-height: 100vh; overflow: hidden; touch-action: manipulation; 
+            -webkit-user-select: none; user-select: none;
+        }
+        
+        #phone-container { 
+            width: 100%; height: 100vh; height: 100dvh; 
+            background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%); 
+            position: relative; overflow: hidden; display: flex; flex-direction: column; 
+            padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        @media (min-width: 500px) { 
+            #phone-container { 
+                max-width: 420px; height: 90vh; max-height: 850px; 
+                border-radius: 2.5rem; border: 12px solid #1e293b; 
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); 
+                padding-top: 0; padding-bottom: 0;
+            } 
+        }
+
+        .water-bg { background-image: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.2) 2px, transparent 3px); background-size: 40px 40px; animation: moveWater 4s linear infinite; }
+        @keyframes moveWater { 0% { background-position: 0 0; } 100% { background-position: 40px 40px; } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .anim-float { animation: float 1.5s ease-in-out infinite; }
+
+        .input-box { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); user-select: none; }
+        .input-box.active { 
+            border-color: #3b82f6 !important; border-style: solid !important; 
+            background-color: #eff6ff !important; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3); 
+            transform: scale(1.05); z-index: 10; color: #1d4ed8 !important;
+        }
+        .input-box:empty:not(.active)::before { content: '_'; color: #cbd5e1; }
+
+        .key-btn { background: white; color: #1e3a8a; border-radius: 1rem; font-size: 2rem; font-weight: bold; box-shadow: 0 5px 0 #93c5fd; transition: all 0.1s; display: flex; justify-content: center; align-items: center; padding: 16px 0; cursor: pointer; }
+        .key-btn:active { transform: translateY(5px); box-shadow: 0 0 0 transparent; background: #e0f2fe; }
+    </style>
+</head>
+<body>
+
+    <div id="phone-container">
+        
+        <!-- HUD Layer -->
+        <div class="z-20 p-4 flex justify-between items-start pointer-events-none">
+            <div class="bg-white/90 backdrop-blur rounded-xl px-4 py-2 shadow-lg border-2 border-blue-200 pointer-events-auto">
+                <div class="text-xs text-blue-600 font-bold">คะแนนรวม</div>
+                <div class="text-2xl font-black text-blue-900" id="scoreDisplay">0</div>
+            </div>
+            <div class="flex flex-col items-end gap-2">
+                <div class="bg-gray-900/80 backdrop-blur rounded-full px-4 py-1 text-sm tracking-widest pointer-events-auto shadow-md" id="rodsDisplay">🎣🎣🎣🎣🎣</div>
+                <button onclick="toggleEncyclopedia()" class="bg-amber-400 hover:bg-amber-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg border-2 border-amber-600 pointer-events-auto transition transform hover:scale-105 active:scale-95 cursor-pointer">
+                    <span class="text-2xl">📖</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Fishing Sea Area -->
+        <div id="seaArea" class="flex-1 relative water-bg cursor-crosshair z-10" onpointerdown="castLine(event)">
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-80" id="hintText">
+                <h2 class="text-white text-xl font-bold drop-shadow-md text-center bg-black/40 px-6 py-3 rounded-full animate-pulse">
+                    👆 จิ้มที่ผิวน้ำเพื่อเหวี่ยงเบ็ด
+                </h2>
+            </div>
+            <div id="bobber" class="absolute hidden flex-col items-center justify-center anim-float pointer-events-none z-20" style="width: 40px; height: 40px; margin-left: -20px; margin-top: -20px;">
+                <div class="w-3 h-5 bg-red-500 rounded-t-full border border-white shadow-md"></div>
+                <div class="w-3 h-3 bg-white rounded-b-full border border-gray-300 shadow-md"></div>
+                <div id="alertIcon" class="absolute -top-10 text-5xl font-black text-red-500 drop-shadow-[0_0_15px_white] hidden animate-bounce">!</div>
+            </div>
+        </div>
+
+        <!-- Player Dock -->
+        <div class="h-32 bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] bg-amber-800 border-t-8 border-amber-900 relative z-20 flex justify-center items-end pb-4">
+            <div class="text-6xl drop-shadow-xl">🎣</div>
+        </div>
+
+        <!-- ========================================= -->
+        <!-- MINIGAME OVERLAY (45 Seconds Math Battle) -->
+        <!-- ========================================= -->
+        <div id="minigameOverlay" class="absolute inset-0 bg-slate-900/95 z-40 hidden flex-col pb-6">
+            <div class="w-full h-3 bg-gray-800">
+                <div id="timerBar" class="h-full bg-green-400 w-full transition-all duration-1000 ease-linear"></div>
+            </div>
+            <div class="flex justify-between items-center px-4 mt-3 mb-3">
+                <span class="text-gray-400 text-sm font-bold">ปลาติดเบ็ดแล้ว!</span>
+                <span class="text-white font-black text-2xl" id="timerText">45s</span>
+            </div>
+
+            <div class="flex-1 flex flex-col items-center px-4 w-full">
+                
+                <!-- Workspace -->
+                <div class="bg-white w-full rounded-3xl p-6 shadow-2xl flex flex-col items-center justify-center mb-4 relative" id="workspaceDisplay">
+                    <span class="text-sm text-blue-500 font-bold bg-blue-100 px-3 py-1 rounded-full mb-4" id="actionHint">คาถาแปลงร่างหน่วย</span>
+                    
+                    <div class="flex items-center justify-center w-full gap-3 text-3xl font-black text-slate-700">
+                        <div class="flex flex-col items-center">
+                            <span id="questionVal" class="text-4xl text-blue-600">10</span>
+                            <span id="questionUnit" class="text-lg text-slate-500 mt-1">ซม.</span>
+                        </div>
+                        <div class="text-slate-300 pb-6">=</div>
+                        <div class="flex flex-col items-center">
+                            <div id="box-answer" class="input-box w-28 h-16 border-4 border-dashed border-gray-300 rounded-2xl flex items-center justify-center text-3xl cursor-pointer bg-gray-50 active"></div>
+                            <span id="targetUnit" class="text-lg text-emerald-600 mt-2 font-bold">มม.</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 3-Column Numpad -->
+                <div class="grid grid-cols-3 gap-3 w-full max-w-sm mt-auto">
+                    <button class="key-btn" onclick="typeKey('1')">1</button>
+                    <button class="key-btn" onclick="typeKey('2')">2</button>
+                    <button class="key-btn" onclick="typeKey('3')">3</button>
+                    
+                    <button class="key-btn" onclick="typeKey('4')">4</button>
+                    <button class="key-btn" onclick="typeKey('5')">5</button>
+                    <button class="key-btn" onclick="typeKey('6')">6</button>
+                    
+                    <button class="key-btn" onclick="typeKey('7')">7</button>
+                    <button class="key-btn" onclick="typeKey('8')">8</button>
+                    <button class="key-btn" onclick="typeKey('9')">9</button>
+                    
+                    <button class="key-btn bg-red-100 text-red-600 text-2xl shadow-[0_5px_0_#fca5a5]" onclick="typeKey('del')">ลบ</button>
+                    <button class="key-btn" onclick="typeKey('0')">0</button>
+                    <button class="key-btn bg-green-500 text-white shadow-[0_5px_0_#166534] active:bg-green-600 active:shadow-none text-2xl" onclick="submitAnswer()">ดึงเบ็ด!</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================= -->
+        <!-- RESULT POPUP & ENCYCLOPEDIA -->
+        <!-- ========================================= -->
+        <div id="resultPopup" class="absolute inset-0 bg-black/80 z-50 hidden flex-col items-center justify-center pointer-events-auto backdrop-blur-sm px-4">
+            <div id="resultBox" class="bg-white w-full max-w-sm p-6 rounded-3xl shadow-2xl text-center transform scale-0 transition-transform duration-500 border-8 flex flex-col max-h-[90vh]">
+                <div class="overflow-y-auto flex-1 pb-4 hide-scrollbar">
+                    <div id="resultEmoji" class="text-7xl mb-2 drop-shadow-lg mt-2">🐟</div>
+                    <h1 id="resultTitle" class="text-2xl font-black mb-2"></h1>
+                    <div id="resultSubtitle" class="text-base text-gray-700 mb-4 leading-snug"></div>
+                    <div id="solutionBox" class="bg-gray-50 rounded-xl p-4 mb-2 hidden border-2 border-gray-200 text-left shadow-inner">
+                        <!-- Solution injected here -->
+                    </div>
+                </div>
+                <button onclick="closeResult()" class="bg-blue-600 hover:bg-blue-500 text-white text-xl font-bold py-4 px-10 rounded-full shadow-[0_5px_0_#1e3a8a] active:translate-y-1 active:shadow-none w-full shrink-0 mt-2 cursor-pointer">
+                    ตกปลาต่อ
+                </button>
+            </div>
+        </div>
+
+        <div id="encyclopediaOverlay" class="absolute inset-0 bg-amber-50 z-50 hidden flex-col pb-6">
+            <div class="bg-amber-600 text-white p-4 flex justify-between items-center shadow-md">
+                <h1 class="text-2xl font-bold">สมุดสะสมปลา 📖</h1>
+                <button onclick="toggleEncyclopedia()" class="text-4xl font-black cursor-pointer">&times;</button>
+            </div>
+            <div class="p-3 bg-amber-100 text-amber-900 font-bold text-center border-b-2 border-amber-200">
+                ค้นพบแล้ว: <span id="caughtCount" class="text-2xl text-amber-600">0</span> / 1,000 สายพันธุ์
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4 content-start" id="fishGrid"></div>
+        </div>
+
+    </div>
+
+    <style>
+        /* ซ่อน Scrollbar ของป๊อปอัปเฉลย */
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+
+    <script>
+        // --- Fish & Trash System ---
+        const fSizes = ["จิ๋ว", "เล็ก", "ปกติ", "ใหญ่", "ยักษ์", "โบราณ", "ศักดิ์สิทธิ์", "ปีศาจ", "เทพเจ้า", "จักรวาล"];
+        const fColors = ["สีแดง", "สีส้ม", "สีเหลือง", "สีเขียว", "สีฟ้า", "สีน้ำเงิน", "สีม่วง", "สีดำ", "สีทอง", "สีรุ้ง"];
+        const fTypes = [
+            {n: "ปลาซาร์ดีน", e: "🐟"}, {n: "ปลาการ์ตูน", e: "🐠"}, {n: "ปลาปักเป้า", e: "🐡"}, 
+            {n: "หมึกกล้วย", e: "🦑"}, {n: "ม้าน้ำ", e: "🐴"}, {n: "เต่าทะเล", e: "🐢"}, 
+            {n: "กระเบน", e: "🦇"}, {n: "โลมา", e: "🐬"}, {n: "ฉลาม", e: "🦈"}, {n: "วาฬ", e: "🐳"}
+        ];
+        
+        const trashTypes = [
+            { n: "รองเท้าบูทขาดๆ", e: "🥾", penalty: 10 },
+            { n: "กระป๋องขึ้นสนิม", e: "🥫", penalty: 5 },
+            { n: "ถุงพลาสติก", e: "🛍️", penalty: 8 },
+            { n: "ยางรถยนต์เก่า", e: "🛞", penalty: 20 },
+            { n: "ก้างปลาเน่า", e: "🦴", penalty: 5 },
+            { n: "สาหร่ายเหม็นเขียว", e: "🌿", penalty: 5 }
+        ];
+
+        let caughtFishIds = new Set();
+        let maxRods = 5; 
+        let rods = maxRods;
+        let score = 0;
+        let state = 'IDLE'; 
+        let timer = 45; 
+        let timerInterval;
+
+        let currentProblem = {};
+        let answerValue = "";
+
+        // --- Audio Context ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            
+            if (type === 'cast') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(300, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'bite') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(800, now); osc.frequency.setValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'type') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(900, now);
+                gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'timeout') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(100, now + 0.5);
+                gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'bonus') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1000, now); osc.frequency.setValueAtTime(1500, now + 0.1); osc.frequency.setValueAtTime(2000, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            }
+        }
+
+        function getFishData(id) {
+            const sIdx = Math.floor(id / 100); const cIdx = Math.floor((id % 100) / 10); const tIdx = id % 10;
+            return { id, name: `${fTypes[tIdx].n}${fColors[cIdx]}\nขนาด${fSizes[sIdx]}`, emoji: fTypes[tIdx].e, points: (sIdx+1)*(cIdx+1)*(tIdx+1) };
+        }
+
+        function updateHUD() {
+            document.getElementById('scoreDisplay').innerText = score;
+            document.getElementById('rodsDisplay').innerText = '🎣'.repeat(rods) + '❌'.repeat(maxRods - rods);
+            if(rods <= 0) {
+                setTimeout(() => { 
+                    alert(`คันเบ็ดพังหมดแล้ว!\nคุณทำคะแนนรวมได้ ${score} แต้ม\n(กด OK เพื่อเริ่มเกมใหม่)`); 
+                    location.reload();
+                }, 500);
+            }
+        }
+
+        function castLine(e) {
+            if (state !== 'IDLE' || rods <= 0) return;
+            state = 'WAITING'; playSound('cast');
+            const rect = document.getElementById('seaArea').getBoundingClientRect();
+            document.getElementById('hintText').style.display = 'none';
+            const bobber = document.getElementById('bobber');
+            bobber.style.left = (e.clientX - rect.left) + 'px';
+            bobber.style.top = (e.clientY - rect.top) + 'px';
+            bobber.style.display = 'flex';
+            document.getElementById('alertIcon').style.display = 'none';
+
+            setTimeout(() => {
+                if (state !== 'WAITING') return;
+                playSound('bite');
+                document.getElementById('alertIcon').style.display = 'block';
+                setTimeout(startMinigame, 1000);
+            }, Math.random() * 2000 + 1500);
+        }
+
+        // --- Length Conversion Logic ---
+        function startMinigame() {
+            state = 'MINIGAME';
+            document.getElementById('bobber').style.display = 'none';
+            document.getElementById('minigameOverlay').style.display = 'flex';
+            answerValue = "";
+            document.getElementById('box-answer').innerText = "";
+            
+            generateProblem();
+            startTimer();
+        }
+
+        function generateProblem() {
+            // Types of conversions based on teacher's rule
+            const categories = [
+                { bigUnit: 'ซม.', smallUnit: 'มม.', zeros: 1, maxNum: 99, img: 'นึกถึง "ไม้บรรทัด"' },
+                { bigUnit: 'ม.', smallUnit: 'ซม.', zeros: 2, maxNum: 99, img: 'นึกถึง "การกางแขนของเด็กๆ"' },
+                { bigUnit: 'กม.', smallUnit: 'ม.', zeros: 3, maxNum: 20, img: 'นึกถึง "การวิ่งแข่งกีฬาสี"' }
+            ];
+            
+            const cat = categories[Math.floor(Math.random() * categories.length)];
+            const isBigToSmall = Math.random() > 0.5;
+            let num = Math.floor(Math.random() * cat.maxNum) + 1;
+
+            if (isBigToSmall) { // ใหญ่ไปเล็ก -> เติมศูนย์
+                currentProblem = {
+                    cat: cat, isBigToSmall: true,
+                    qVal: num, qUnit: cat.bigUnit,
+                    tUnit: cat.smallUnit,
+                    ans: num * Math.pow(10, cat.zeros),
+                    zeros: cat.zeros,
+                    actionWord: 'เพิ่มศูนย์ (0)'
+                };
+            } else { // เล็กไปใหญ่ -> ตัดศูนย์
+                let qVal = num * Math.pow(10, cat.zeros);
+                currentProblem = {
+                    cat: cat, isBigToSmall: false,
+                    qVal: qVal, qUnit: cat.smallUnit,
+                    tUnit: cat.bigUnit,
+                    ans: num,
+                    zeros: cat.zeros,
+                    actionWord: 'ตัดศูนย์ (0) ทิ้ง'
+                };
+            }
+
+            document.getElementById('questionVal').innerText = currentProblem.qVal;
+            document.getElementById('questionUnit').innerText = currentProblem.qUnit;
+            document.getElementById('targetUnit').innerText = currentProblem.tUnit;
+            
+            let hint = currentProblem.isBigToSmall ? 'ใหญ่ไปเล็ก (เติม 0)' : 'เล็กไปใหญ่ (ตัด 0)';
+            document.getElementById('actionHint').innerText = `หน่วย${hint}`;
+        }
+
+        window.typeKey = function(val) {
+            if (state !== 'MINIGAME') return;
+            playSound('type');
+            if(val === 'del') {
+                answerValue = answerValue.slice(0, -1);
+            } else {
+                if(answerValue.length < 6) answerValue += val;
+            }
+            document.getElementById('box-answer').innerText = answerValue;
+        };
+
+        window.submitAnswer = function() {
+            if (state !== 'MINIGAME') return;
+            
+            // ตอบผิดหรือไม่ได้กรอก ถือว่าผิดหมด
+            if (answerValue === '' || parseInt(answerValue) !== currentProblem.ans) {
+                clearInterval(timerInterval);
+                playSound('timeout');
+                finishGame(false, "ตอบผิด!"); 
+            } else {
+                clearInterval(timerInterval);
+                finishGame(true);
+            }
+        };
+
+        function startTimer() {
+            timer = 45; 
+            const tBar = document.getElementById('timerBar'); 
+            const tText = document.getElementById('timerText');
+            tBar.style.width = '100%'; tBar.className = "h-full bg-green-400 transition-all duration-1000 ease-linear";
+            tText.innerText = `${timer}s`; tText.style.color = "white";
+
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timer--; tText.innerText = `${timer}s`; 
+                tBar.style.width = `${(timer/45)*100}%`; 
+                
+                if(timer <= 10) { tBar.className = "h-full bg-red-500 transition-all duration-1000 ease-linear"; tText.style.color = "#f87171"; playSound('type'); }
+                else if(timer <= 20) tBar.className = "h-full bg-yellow-400 transition-all duration-1000 ease-linear";
+
+                if(timer <= 0) {
+                    clearInterval(timerInterval); playSound('timeout');
+                    finishGame(false, "หมดเวลา!");
+                }
+            }, 1000);
+        }
+
+        // --- Results & Teacher's Mnemonic System ---
+        function generateSolutionHTML() {
+            let p = currentProblem;
+            let ruleText = p.isBigToSmall 
+                ? `แปลงหน่วยใหญ่ (${p.qUnit}) เป็น หน่วยเล็ก (${p.tUnit}) ให้ <b>"เพิ่มศูนย์ (0)"</b> เข้าไป ${p.zeros} ตัว`
+                : `แปลงหน่วยเล็ก (${p.qUnit}) เป็น หน่วยใหญ่ (${p.tUnit}) ให้ <b>"ตัดศูนย์ (0) ทิ้ง"</b> ไป ${p.zeros} ตัว`;
+            
+            let mathEq = `<div class="text-xl text-center font-black text-blue-700 my-2">${p.qVal} ${p.qUnit} = ${p.ans} ${p.tUnit}</div>`;
+            
+            return `
+                <div class="text-sm font-black text-red-600 mb-1 border-b-2 border-red-200 pb-1">💡 คาถาแปลงร่างหน่วย</div>
+                ${mathEq}
+                <div class="text-sm text-slate-700 font-bold mb-2">
+                    🎯 ${ruleText}
+                </div>
+                <div class="text-xs text-amber-700 bg-amber-100 p-2 rounded-lg leading-tight border border-amber-300">
+                    <b>ภาพจำ:</b> ${p.cat.img} <br>(1 ${p.cat.bigUnit} = ${Math.pow(10, p.cat.zeros)} ${p.cat.smallUnit})
+                </div>
+            `;
+        }
+
+        function finishGame(isWin, msg = "") {
+            document.getElementById('minigameOverlay').style.display = 'none';
+            const popup = document.getElementById('resultPopup');
+            const box = document.getElementById('resultBox');
+            const solBox = document.getElementById('solutionBox');
+            popup.style.display = 'flex';
+            
+            if(isWin) {
+                const fish = getFishData(Math.floor(Math.random() * 1000));
+                caughtFishIds.add(fish.id); 
+                score += fish.points; 
+                
+                let bonusMsg = "";
+                if (rods < maxRods && Math.random() < 0.1) {
+                    rods++;
+                    playSound('bonus');
+                    bonusMsg = `<div class="mt-2 text-sm font-bold bg-green-100 text-green-700 py-1 px-3 rounded-full inline-block border border-green-300">✨ ได้ซ่อมคันเบ็ด 1 อัน!</div>`;
+                }
+                
+                updateHUD();
+                
+                solBox.style.display = 'none'; 
+                box.className = "bg-white w-full max-w-sm p-6 rounded-3xl shadow-2xl text-center transform scale-100 transition-transform duration-500 border-8 border-green-400 flex flex-col max-h-[90vh]";
+                document.getElementById('resultEmoji').innerText = fish.emoji;
+                document.getElementById('resultTitle').innerText = "ตกได้สำเร็จ!";
+                document.getElementById('resultTitle').className = "text-3xl font-black mb-2 text-green-600";
+                document.getElementById('resultSubtitle').innerHTML = `
+                    คุณตกได้ <b>${fish.name}</b><br>
+                    <span class="text-amber-500 font-bold text-2xl">+${fish.points} คะแนน</span><br>
+                    ${bonusMsg}
+                `;
+            } else {
+                rods--; 
+                const trash = trashTypes[Math.floor(Math.random() * trashTypes.length)];
+                score -= trash.penalty; 
+                updateHUD();
+                
+                solBox.innerHTML = generateSolutionHTML();
+                solBox.style.display = 'block';
+
+                box.className = "bg-white w-full max-w-sm p-5 rounded-3xl shadow-2xl text-center transform scale-100 transition-transform duration-500 border-8 border-slate-400 flex flex-col max-h-[90vh]";
+                document.getElementById('resultEmoji').innerText = trash.e;
+                document.getElementById('resultTitle').innerText = "ตกได้ขยะ!";
+                document.getElementById('resultTitle').className = "text-2xl font-black mb-1 text-slate-700";
+                
+                document.getElementById('resultSubtitle').innerHTML = `
+                    <span class="text-red-500 font-bold text-lg">${msg}</span><br>
+                    ได้ <b>${trash.n}</b> (<span class="text-red-600 font-black">-${trash.penalty} แต้ม</span>)<br>
+                    <span class="text-slate-500 font-bold text-sm">คันเบ็ดพังไป 1 อัน 💥</span>
+                `;
+            }
+        }
+
+        window.closeResult = function() {
+            document.getElementById('resultPopup').style.display = 'none';
+            document.getElementById('resultBox').classList.remove('scale-100');
+            document.getElementById('resultBox').classList.add('scale-0');
+            state = 'IDLE';
+            document.getElementById('hintText').style.display = 'flex';
+        };
+
+        window.toggleEncyclopedia = function() {
+            const el = document.getElementById('encyclopediaOverlay');
+            if(el.style.display === 'flex') { el.style.display = 'none'; } 
+            else { el.style.display = 'flex'; renderEncyclopedia(); }
+        };
+
+        function renderEncyclopedia() {
+            document.getElementById('caughtCount').innerText = caughtFishIds.size;
+            const grid = document.getElementById('fishGrid'); grid.innerHTML = '';
+            if(caughtFishIds.size === 0) { grid.innerHTML = '<div class="col-span-2 text-center text-amber-700 mt-10 font-bold">ยังไม่เคยตกปลาได้เลย<br>ลองเหวี่ยงเบ็ดดูสิ!</div>'; return; }
+
+            const fArr = Array.from(caughtFishIds).map(id => getFishData(id)).sort((a,b) => b.points - a.points);
+            fArr.forEach(f => {
+                grid.innerHTML += `<div class="bg-white rounded-xl p-3 shadow text-center border-2 border-amber-200 flex flex-col items-center">
+                    <div class="text-5xl mb-2 drop-shadow-md">${f.emoji}</div>
+                    <div class="text-xs font-bold text-gray-800 leading-tight flex-1 whitespace-pre-line">${f.name}</div>
+                    <div class="text-sm font-black text-amber-500 mt-1 bg-amber-50 w-full rounded-md py-1 border border-amber-100">${f.points} Pt.</div>
+                </div>`;
+            });
+        }
+    </script>
+</body>
+</html>
